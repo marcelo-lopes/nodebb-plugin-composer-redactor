@@ -105,7 +105,7 @@
 	$.Redactor.modules = ['air', 'autosave', 'block', 'buffer', 'build', 'button', 'caret', 'clean', 'code', 'core', 'detect', 'dropdown',
 						  'events', 'file', 'focus', 'image', 'indent', 'inline', 'insert', 'keydown', 'keyup',
 						  'lang', 'line', 'link', 'linkify', 'list', 'marker', 'modal', 'observe', 'offset', 'paragraphize', 'paste', 'placeholder',
-						  'progress', 'selection', 'shortcuts', 'storage', 'toolbar', 'upload', 'uploads3', 'utils',
+						  'progress', 'selection', 'shortcuts', 'storage', 'toolbar', 'upload', 'uploadSlim', 'uploads3', 'utils',
 
 						  'browser' // deprecated
 						  ];
@@ -165,11 +165,11 @@
         imageEditable: true,
 		imageCaption: true,
 
-		imagePosition: false,
-		imageResizable: false,
+		imagePosition: true,
+		imageResizable: true,
 		imageFloatMargin: '10px',
 
-		dragImageUpload: true,
+		dragImageUpload: false,
 		multipleImageUpload: true,
 		clipboardImageUpload: true,
 
@@ -244,6 +244,7 @@
 
 				"format": "Format",
 				"image": "Image",
+				"image-modal": "Cliquez sur l'icone pour télécharger une image.",
 				"file": "File",
 				"link": "Link",
 				"bold": "Bold",
@@ -4468,10 +4469,10 @@
 				show: function()
 				{
 					// build modal
-					this.modal.load('image', this.lang.get('image'), 700);
+					this.modal.load('imageSlim', this.lang.get('image-modal'), 700);
 
 					// build upload
-					this.upload.init('#redactor-modal-image-droparea', this.opts.imageUpload, this.image.insert);
+					this.uploadSlim.init('#redactor-modal-image-droparea .slim-placeholder', this.opts.imageUpload, this.image.insert);
 					this.modal.show();
 
 				},
@@ -4504,6 +4505,10 @@
 
 					this.placeholder.hide();
 					var $figure = $('<' + this.opts.imageTag + '>');
+
+					if(Array.isArray(json) && json.length > 0) {
+						json = json[0];
+					}
 
 					$img = $('<img>');
 					$img.attr('src', json.url);
@@ -7864,6 +7869,13 @@
 							+ '</div>'
 						+ '</div>',
 
+						'imageSlim': String()
+						+ '<div class="redactor-modal-tab" data-title="Upload">'
+						+ '<section>'
+						+ '<div id="redactor-modal-image-droparea"><div class="slim-placeholder center-block"><input type="file" name="files" /></div></div>'
+						+ '</section>'
+						+ '</div>',
+
 						'image': String()
 						+ '<div class="redactor-modal-tab" data-title="Upload">'
 							+ '<section>'
@@ -10018,6 +10030,225 @@
 
 						$el.css({ position: position, top: ($button.innerHeight() + top) + 'px' });
 					});
+				}
+			};
+		},
+
+		// =upload
+		uploadSlim: function()
+		{
+			return {
+				init: function(id, url, callback)
+				{
+					this.upload.callback = callback;
+					var that = this;
+					var additionalFields = {
+						cid: $(this.opts.imageUploadFields.cid).val() || 0,
+						'_csrf': this.opts.imageUploadFields['_csrf']
+					};
+
+					var slimOptions = {
+						ratio: '1:1',
+						instantEdit: true,
+						push: true,
+						minSize: {
+							width: 485,
+							height: 485
+						},
+						size: {
+							width: 485,
+							height: 485
+						},
+						maxFileSize: 2,
+						service: url,
+						meta: additionalFields,
+						willRequest: function handleRequest(xhr) {
+							xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+						},
+						didUpload: function(error, data, response) {
+							console.log(error, data, response);
+							if(!error) {
+								that.upload.callback(response, false, null);
+							}
+						},
+						buttonCancelLabel: $('#image-crop-cancel-label').val(),
+						buttonConfirmLabel: $('#image-crop-ok-label').val(),
+						label: '<i class="fa fa-picture-o fa-2" aria-hidden="true"></i>'
+					};
+					$(id).slim(slimOptions);
+				},
+				directUpload: function(file, e)
+				{
+					this.upload.direct = true;
+					this.upload.traverseFile(file, e);
+				},
+				onDrop: function(e)
+				{
+					e = e.originalEvent || e;
+					var files = e.dataTransfer.files;
+
+					if (this.opts.multipleImageUpload)
+					{
+						var len = files.length;
+						for (var i = 0; i < len; i++)
+						{
+							this.upload.traverseFile(files[i], e);
+						}
+					}
+					else
+					{
+						this.upload.traverseFile(files[0], e);
+					}
+				},
+				traverseFile: function(file, e)
+				{
+					if (this.opts.s3)
+					{
+						this.upload.setConfig(file);
+						this.uploads3.send(file, e);
+						return;
+					}
+
+					var formData = !!window.FormData ? new FormData() : null;
+					if (window.FormData)
+					{
+						this.upload.setConfig(file);
+
+						var name = (this.upload.type === 'image') ? this.opts.imageUploadParam : this.opts.fileUploadParam;
+						formData.append(name, file);
+					}
+
+					this.progress.show();
+					this.core.callback('uploadStart', e, formData);
+					this.upload.send(formData, e);
+				},
+				setConfig: function(file)
+				{
+					this.upload.getType(file);
+
+					if (this.upload.direct)
+					{
+						this.upload.url = (this.upload.type === 'image') ? this.opts.imageUpload : this.opts.fileUpload;
+						this.upload.callback = (this.upload.type === 'image') ? this.image.insert : this.file.insert;
+					}
+				},
+				getType: function(file)
+				{
+					this.upload.type = (this.opts.imageTypes.indexOf(file.type) === -1) ? 'file' : 'image';
+
+					if (this.opts.imageUpload === null && this.opts.fileUpload !== null)
+					{
+						this.upload.type = 'file';
+					}
+				},
+				getHiddenFields: function(obj, fd)
+				{
+					if (obj === false || typeof obj !== 'object')
+					{
+						return fd;
+					}
+
+					$.each(obj, $.proxy(function(k, v)
+					{
+						if (v !== null && v.toString().indexOf('#') === 0)
+						{
+							v = $(v).val();
+						}
+
+						fd.append(k, v);
+
+					}, this));
+
+					return fd;
+
+				},
+				send: function(formData, e)
+				{
+					// append hidden fields
+					if (this.upload.type === 'image')
+					{
+						formData = this.utils.appendFields(this.opts.imageUploadFields, formData);
+						formData = this.utils.appendForms(this.opts.imageUploadForms, formData);
+						formData = this.upload.getHiddenFields(this.upload.imageFields, formData);
+					}
+					else
+					{
+						formData = this.utils.appendFields(this.opts.fileUploadFields, formData);
+						formData = this.utils.appendForms(this.opts.fileUploadForms, formData);
+						formData = this.upload.getHiddenFields(this.upload.fileFields, formData);
+					}
+
+					var xhr = new XMLHttpRequest();
+					xhr.open('POST', this.upload.url);
+					xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+
+					// complete
+					xhr.onreadystatechange = $.proxy(function()
+					{
+						if (xhr.readyState === 4)
+						{
+							var data = xhr.responseText;
+
+							data = data.replace(/^\[/, '');
+							data = data.replace(/\]$/, '');
+
+							var json;
+							try
+							{
+								json = (typeof data === 'string' ? $.parseJSON(data) : data);
+							}
+							catch(err)
+							{
+								json = { error: true };
+							}
+
+
+							this.progress.hide();
+
+							if (!this.upload.direct)
+							{
+								this.upload.$droparea.removeClass('drag-drop');
+							}
+
+							this.upload.callback(json, this.upload.direct, e);
+						}
+					}, this);
+
+					xhr.send(formData);
+				},
+				onDrag: function(e)
+				{
+					e.preventDefault();
+					this.upload.$droparea.addClass('drag-hover');
+				},
+				onDragLeave: function(e)
+				{
+					e.preventDefault();
+					this.upload.$droparea.removeClass('drag-hover');
+				},
+				clearImageFields: function()
+				{
+					this.upload.imageFields = {};
+				},
+				addImageFields: function(name, value)
+				{
+					this.upload.imageFields[name] = value;
+				},
+				removeImageFields: function(name)
+				{
+					delete this.upload.imageFields[name];
+				},
+				clearFileFields: function()
+				{
+					this.upload.fileFields = {};
+				},
+				addFileFields: function(name, value)
+				{
+					this.upload.fileFields[name] = value;
+				},
+				removeFileFields: function(name)
+				{
+					delete this.upload.fileFields[name];
 				}
 			};
 		},
