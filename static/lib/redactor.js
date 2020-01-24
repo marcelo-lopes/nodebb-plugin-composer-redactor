@@ -9683,6 +9683,8 @@
 								that.upload.callback(response, false, null);
 							}
 						},
+						buttonCancelLabel: $('#image-crop-cancel-label').val(),
+						buttonConfirmLabel: $('#image-crop-ok-label').val(),
 						label: '<i class="fa fa-picture-o fa-2" aria-hidden="true"></i>'
 					};
 					$(id).slim(slimOptions);
