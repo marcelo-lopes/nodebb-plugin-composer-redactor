@@ -241,6 +241,7 @@
 
 				"format": "Format",
 				"image": "Image",
+				"image-modal": "Cliquez sur l'icone pour télécharger une image.",
 				"file": "File",
 				"link": "Link",
 				"bold": "Bold",
@@ -4300,7 +4301,7 @@
 				show: function()
 				{
 					// build modal
-					this.modal.load('imageSlim', this.lang.get('image'), 700);
+					this.modal.load('imageSlim', this.lang.get('image-modal'), 700);
 
 					// build upload
 					this.uploadSlim.init('#redactor-modal-image-droparea .slim-placeholder', this.opts.imageUpload, this.image.insert);
